@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Revolución Industrial — Ruta por Inglaterra</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+:root {
+  --coal: #1a1410; --iron: #2e2822; --rust: #8b3a1a;
+  --amber: #c8742a; --brass: #d4a843; --steam: #e8ddd0; --paper: #f5efe6;
+}
+body { background: var(--coal); color: var(--steam); font-family: 'DM Mono', monospace; min-height: 100vh; overflow: auto; }
+
+header {
+  padding: 1.4rem 2rem 1rem;
+  border-bottom: 1px solid #3a3028;
+  display: flex; align-items: flex-end; gap: 2rem; flex-wrap: wrap;
+}
+.title-block h1 { font-family: 'Playfair Display', serif; font-size: clamp(1.3rem,3vw,2rem); font-weight:700; color: var(--brass); line-height:1.1; }
+.title-block p { font-size: 0.62rem; color: #5a4e44; letter-spacing: 0.18em; text-transform: uppercase; margin-top: 0.3rem; }
+.route-meta { margin-left: auto; display: flex; gap: 1.5rem; }
+.meta-item span { display:block; font-size:0.58rem; color:#5a4e44; letter-spacing:0.14em; text-transform:uppercase; }
+.meta-item strong { font-family:'Playfair Display',serif; font-size:1.2rem; color:var(--amber); }
+
+.main-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  min-height: auto;
+}
+
+/* SIDEBAR */
+.sidebar { overflow-y: auto; border-right: 1px solid #2a2218; scrollbar-width: thin; scrollbar-color: #3a3028 transparent; }
+.map-area { position: relative; background: #12100e; overflow: hidden; height: 143vh; max-height: 1425px; }
+#leafletMap { width: 100%; height: 100%; }
+.stop-card { padding: 1rem 1.4rem; border-bottom: 1px solid #221e18; cursor: pointer; transition: background 0.2s; position: relative; }
+.stop-card:hover { background: #221e18; }
+.stop-card.active { background: #2a2218; border-left: 3px solid var(--amber); }
+.stop-day { font-size: 0.58rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--rust); margin-bottom: 0.2rem; }
+.stop-name { font-family: 'Playfair Display', serif; font-size: 1rem; color: var(--brass); font-weight: 700; }
+.stop-subtitle { font-size: 0.64rem; color: #6a5e54; margin-top: 0.1rem; }
+.stop-desc { font-size: 0.66rem; color: #8a7d70; margin-top: 0.5rem; line-height: 1.6; }
+.stop-num { position:absolute; top:1rem; right:1.2rem; font-family:'Playfair Display',serif; font-size:1.6rem; color:#2e2822; font-weight:700; }
+
+/* MAP AREA */
+
+/* England outline */
+.land, .sea, .grid { display: none; }
+
+/* Route */
+.route-line { fill: none; stroke: var(--amber); stroke-width: 1.5; stroke-dasharray: 6 7; opacity: 0.6; }
+
+/* Pins */
+.pin-group { cursor: pointer; }
+.pin-circle {
+  fill: var(--amber); stroke: var(--brass); stroke-width: 1.5;
+  transition: fill 0.2s, r 0.2s;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.7));
+}
+.pin-group:hover .pin-circle, .pin-group.active .pin-circle { fill: var(--brass); r: 11; }
+.pin-label { fill: #1a1410; font-family:'DM Mono',monospace; font-size: 10px; font-weight:700; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+
+/* Tooltip */
+.tooltip {
+  position: absolute; pointer-events: none;
+  background: var(--paper); border: 1px solid var(--brass);
+  padding: 0.6rem 0.9rem; min-width: 170px;
+  font-size: 0.68rem; color: #2e2822;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  opacity: 0; transition: opacity 0.15s;
+}
+.tooltip.visible { opacity: 1; }
+.tooltip-day { font-size: 0.58rem; color: var(--rust); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 3px; }
+.tooltip-name { font-family: 'Playfair Display', serif; font-size: 0.95rem; font-weight:700; color: #1a1410; }
+.tooltip-city { color: #6a5e54; margin-top: 2px; }
+
+@media(max-width:700px){
+  body { overflow: auto; }
+  .main-layout { grid-template-columns:1fr; grid-template-rows: auto 45vh; }
+  .map-area { height: 45vh; max-height: none; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title-block">
+    <h1>Revolución Industrial · <em>Ruta por Inglaterra</em></h1>
+    <p>Del hierro al vapor &nbsp;·&nbsp; De la fragua al ferrocarril</p>
+  </div>
+  <div class="route-meta">
+    <div class="meta-item"><span>Duración</span><strong>6 días</strong></div>
+    <div class="meta-item"><span>Paradas</span><strong>7</strong></div>
+  </div>
+</header>
+
+<div class="main-layout">
+  <aside class="sidebar">
+    <div class="stop-card active" data-i="0" onclick="selectStop(0)">
+      <div class="stop-num">1</div>
+      <div class="stop-day">Día 1 · Londres</div>
+      <div class="stop-name">Science Museum</div>
+      <div class="stop-subtitle">South Kensington</div>
+      <div class="stop-desc">La máquina de vapor de Watt original. Vitrina del Imperio industrial. Entrada gratuita.</div>
+    </div>
+    <div class="stop-card" data-i="1" onclick="selectStop(1)">
+      <div class="stop-num">2</div>
+      <div class="stop-day">Día 2 · West Midlands</div>
+      <div class="stop-name">Birmingham</div>
+      <div class="stop-subtitle">Ciudad de los Mil Oficios</div>
+      <div class="stop-desc">Canales industriales, Jewellery Quarter y el legado de Boulton &amp; Watt.</div>
+    </div>
+    <div class="stop-card" data-i="2" onclick="selectStop(2)">
+      <div class="stop-num">3</div>
+      <div class="stop-day">Día 3 · Shropshire</div>
+      <div class="stop-name">Ironbridge Gorge</div>
+      <div class="stop-subtitle">Patrimonio UNESCO</div>
+      <div class="stop-desc">El primer puente de hierro del mundo (1779) y el pueblo victoriano de Blists Hill en vivo.</div>
+    </div>
+    <div class="stop-card" data-i="3" onclick="selectStop(3)">
+      <div class="stop-num">4</div>
+      <div class="stop-day">Día 4 · Lancashire</div>
+      <div class="stop-name">Manchester</div>
+      <div class="stop-subtitle">Cottonopolis</div>
+      <div class="stop-desc">Museum of Science and Industry en la estación de tren más antigua del mundo.</div>
+    </div>
+    <div class="stop-card" data-i="4" onclick="selectStop(4)">
+      <div class="stop-num">5</div>
+      <div class="stop-day">Día 5 · Merseyside</div>
+      <div class="stop-name">Liverpool</div>
+      <div class="stop-subtitle">El Gran Puerto Exportador</div>
+      <div class="stop-desc">Albert Dock y el Merseyside Maritime Museum. El puerto que exportó la Revolución al mundo.</div>
+    </div>
+    <div class="stop-card" data-i="5" onclick="selectStop(5)">
+      <div class="stop-num">6</div>
+      <div class="stop-day">Día 6 · Yorkshire</div>
+      <div class="stop-name">National Railway Museum</div>
+      <div class="stop-subtitle">York · Entrada gratuita</div>
+      <div class="stop-desc">La mayor colección ferroviaria del mundo: la Mallard y la Rocket original.</div>
+    </div>
+    <div class="stop-card" data-i="6" onclick="selectStop(6)">
+      <div class="stop-num">7</div>
+      <div class="stop-day">Día 6 · County Durham</div>
+      <div class="stop-name">Stockton–Darlington</div>
+      <div class="stop-subtitle">Head of Steam Museum</div>
+      <div class="stop-desc">El primer ferrocarril público del mundo (1825). Final perfecto del viaje.</div>
+    </div>
+  </aside>
+
+  <div class="map-area" id="mapArea">
+    <div id="leafletMap"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// Stops: [lat, lng, name, day, city, desc]
+const stops = [
+  { lat: 51.497, lng: -0.177, name: "Science Museum",          day: "Día 1", city: "Londres",     desc: "Máquina de vapor de Watt" },
+  { lat: 52.480, lng: -1.903, name: "Birmingham Museum",       day: "Día 2", city: "Birmingham",  desc: "Ciudad de los Mil Oficios" },
+  { lat: 52.628, lng: -2.489, name: "Ironbridge Gorge",        day: "Día 3", city: "Shropshire",  desc: "Patrimonio UNESCO" },
+  { lat: 53.477, lng: -2.255, name: "Science & Industry Museum", day: "Día 4", city: "Manchester", desc: "Cottonopolis" },
+  { lat: 53.399, lng: -2.992, name: "Albert Dock",             day: "Día 5", city: "Liverpool",   desc: "El Gran Puerto Exportador" },
+  { lat: 53.961, lng: -1.096, name: "National Railway Museum", day: "Día 6", city: "York",        desc: "Mayor colección ferroviaria" },
+  { lat: 54.523, lng: -1.561, name: "Head of Steam Museum",    day: "Día 6", city: "Darlington",  desc: "Primer ferrocarril público (1825)" },
+];
+
+// Leaflet map setup
+const map = L.map('leafletMap', {
+  zoomControl: true,
+  minZoom: 5,
+  maxZoom: 13,
+  maxBounds: [[49.5, -6.5], [56.3, 2.5]],
+  maxBoundsViscosity: 0.8,
+}).fitBounds(stops.map((stop) => [stop.lat, stop.lng]));
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+}).addTo(map);
+
+const routeLine = L.polyline(stops.map((stop) => [stop.lat, stop.lng]), {
+  color: '#c8742a',
+  weight: 4,
+  dashArray: '6 7',
+  opacity: 0.8,
+}).addTo(map);
+
+const markerIcon = L.circleMarker([0, 0], {
+  radius: 9,
+  fillColor: '#c8742a',
+  color: '#d4a843',
+  weight: 2,
+  fillOpacity: 1,
+});
+
+const markers = stops.map((stop, i) => {
+  const marker = L.circleMarker([stop.lat, stop.lng], {
+    radius: 10,
+    fillColor: '#c8742a',
+    color: '#d4a843',
+    weight: 2,
+    fillOpacity: 1,
+  }).addTo(map);
+
+  marker.on('click', () => selectStop(i));
+  marker.bindPopup(`<strong>${stop.name}</strong><br>${stop.day}<br>${stop.city}`);
+  return marker;
+});
+
+let activeIndex = 0;
+function selectStop(i) {
+  activeIndex = i;
+  document.querySelectorAll('.stop-card').forEach((c, j) => {
+    c.classList.toggle('active', j === i);
+  });
+  document.querySelectorAll('.stop-card')[i].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  markers.forEach((marker, j) => {
+    marker.setStyle({ radius: j === i ? 12 : 10 });
+  });
+  markers[i].openPopup();
+  map.flyTo([stops[i].lat, stops[i].lng], 12, { duration: 0.7 });
+}
+
+// Initialize first stop popup
+markers[0].openPopup();
+
+// Handle sidebar clicks if inline onclick is preserved
+window.selectStop = selectStop;
+</script>
+</body>
+</html>
